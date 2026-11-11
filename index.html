@@ -1,0 +1,761 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Insulator AI v3</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#edf3fc;color:#19345c;font-family:Arial,Tahoma,sans-serif}
+header{background:#2855a1;color:white;text-align:center;padding:20px 8px}
+header h1{margin:0;font-size:25px}
+header p{margin:6px 0 0;color:#dbe8ff;font-size:13px}
+main{max-width:650px;margin:auto;padding:18px 14px 115px}
+.page{display:none}
+.page.active{display:block}
+h2{font-size:22px}
+h3{font-size:18px;margin:0 0 13px}
+.card{background:white;padding:18px;border-radius:17px;margin-bottom:15px;box-shadow:0 3px 12px #152a4a18}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.tile{background:#2c5ba9;color:white;border:0;border-radius:12px;padding:20px 7px;font-size:16px;font-weight:bold}
+.tile span{display:block;font-size:28px;margin-bottom:7px}
+button{cursor:pointer;font-family:inherit}
+.btn{display:block;width:100%;background:#2d61b7;border:0;border-radius:10px;color:white;font-size:16px;padding:14px;margin:10px 0}
+.btn.light{background:#e7eefb;color:#2855a1}
+.btn.red{background:#ca4545}
+.btn:disabled{opacity:.5}
+label{display:block;font-weight:bold;font-size:14px;margin-top:12px}
+input,textarea,select{width:100%;padding:12px;border:1px solid #c9d6e9;border-radius:9px;font-size:16px;margin:8px 0;background:white}
+textarea{min-height:70px}
+.note{color:#70809a;font-size:13px;line-height:1.6}
+.msg{padding:12px;border-radius:10px;margin:10px 0;white-space:pre-line;font-size:14px;line-height:1.6}
+.info{background:#e8f0fd;color:#2755a0}
+.good{background:#dcfce7;color:#166534}
+.warn{background:#fff2d1;color:#855b00}
+.bad{background:#fee2e2;color:#991b1b}
+.record{background:#f7faff;border:1px solid #dce7f4;border-radius:12px;padding:13px;margin:10px 0}
+.record img{width:100%;max-height:220px;object-fit:contain;border-radius:9px}
+#canvas{width:100%;display:none;border-radius:11px;background:#e9edf3}
+#map{height:340px;border-radius:12px;z-index:1}
+.mini{display:flex;gap:9px}
+.mini>*{flex:1;min-width:0}
+.status{font-size:13px;border-radius:20px;padding:5px 10px;background:#edf3ff;display:inline-block}
+nav{display:flex;position:fixed;bottom:0;width:100%;background:white;z-index:1000;border-top:1px solid #dae3ef;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;min-width:0;background:white;border:0;color:#71819b;padding:12px 1px;font-size:11px}
+nav button span{display:block;font-size:22px;margin-bottom:5px}
+nav button.active{background:#e8f0ff;color:#2456a6;font-weight:bold}
+</style>
+</head>
+<body>
+
+<header>
+<h1>⚡ Insulator AI</h1>
+<p>22 kV Line Post Insulator Inspection</p>
+</header>
+
+<main>
+<section id="home" class="page active">
+<h2>หน้าหลัก</h2>
+<div class="card">
+<h3>ยินดีต้อนรับ</h3>
+<p>ระบบทดลองตรวจสอบสภาพลูกถ้วยไฟฟ้า 22 kV</p>
+<div class="msg warn">AI Demo: ผลวิเคราะห์เป็นข้อมูลจำลอง ไม่ได้ตรวจจับความเสียหายจริง</div>
+</div>
+<div class="grid">
+<button class="tile" onclick="go('scan')"><span>📷</span>ตรวจสอบ</button>
+<button class="tile" onclick="go('mapPage')"><span>🗺️</span>แผนที่</button>
+<button class="tile" onclick="go('history')"><span>🕒</span>ประวัติ</button>
+<button class="tile" onclick="go('settings')"><span>⚙️</span>ตั้งค่า</button>
+</div>
+<div class="card" style="margin-top:15px">
+<h3>จำนวนรายการที่บันทึก</h3>
+<h1 id="count">0</h1>
+<p id="storageName" class="note">กำลังตรวจสอบระบบจัดเก็บ</p>
+</div>
+</section>
+
+<section id="scan" class="page">
+<h2>ตรวจสอบลูกถ้วย</h2>
+
+<div class="card">
+<h3>1. ภาพลูกถ้วย</h3>
+<label>รหัสเสาไฟฟ้า</label>
+<input id="pole" placeholder="LP-001">
+<label>ชื่อผู้ตรวจสอบ</label>
+<input id="inspector" placeholder="ชื่อผู้ตรวจสอบ">
+<input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
+<input id="galleryInput" type="file" accept="image/*" hidden>
+<button class="btn" onclick="document.getElementById('cameraInput').click()">📸 ถ่ายภาพด้วยกล้อง</button>
+<button class="btn light" onclick="document.getElementById('galleryInput').click()">🖼️ เลือกจากแกลเลอรี</button>
+<canvas id="canvas"></canvas>
+<p id="photoStatus" class="note">ยังไม่ได้เลือกภาพ</p>
+</div>
+
+<div class="card">
+<h3>2. บันทึกพิกัด GPS</h3>
+<div id="gpsStatus" class="msg info">ยังไม่ได้บันทึกพิกัด</div>
+<button class="btn" onclick="getGPS()">📍 ดึงพิกัด GPS จริง</button>
+<button class="btn light" onclick="retryGPS()">🔄 ลอง GPS แบบประหยัดพลังงาน</button>
+
+<label>ละติจูด (Latitude)</label>
+<input id="lat" type="number" step="any" inputmode="decimal" placeholder="เช่น 14.350000">
+<label>ลองจิจูด (Longitude)</label>
+<input id="lng" type="number" step="any" inputmode="decimal" placeholder="เช่น 100.570000">
+
+<button class="btn light" onclick="useManualGPS()">✅ ใช้พิกัดที่กรอก</button>
+<button class="btn light" onclick="clearGPS()">ล้างพิกัด</button>
+<p class="note">สามารถกรอกพิกัดจากแอปแผนที่ได้เองเมื่อ GPS หมดเวลา การกรอกพิกัดเองไม่ใช่การวัด GPS อัตโนมัติ</p>
+</div>
+
+<div class="card">
+<h3>3. วิเคราะห์ด้วย AI (จำลอง)</h3>
+<button id="analyzeBtn" class="btn" onclick="analyze()">🤖 เริ่มจำลองการวิเคราะห์ YOLOv8</button>
+<div id="result" style="display:none">
+<div class="msg warn">ผล AI จำลองเท่านั้น ไม่ควรใช้ตัดสินใจบำรุงรักษาจริง</div>
+<div id="resultDetails"></div>
+<button id="saveBtn" class="btn" onclick="saveResult()">💾 บันทึกผลการตรวจสอบ</button>
+<div id="saveStatus"></div>
+</div>
+</div>
+</section>
+
+<section id="mapPage" class="page">
+<h2>แผนที่ตรวจสอบ</h2>
+<div class="card">
+<div id="map"></div>
+<p class="note">หมุดมาจากพิกัดที่บันทึกไว้ในเครื่องจริงหรือกรอกเอง ส่วนสีสถานะมาจากผลวิเคราะห์จำลอง</p>
+</div>
+<div class="card">
+<h3>รายละเอียดเสาไฟฟ้า</h3>
+<div id="mapDetail">แตะหมุดบนแผนที่เพื่อดูรายละเอียด</div>
+</div>
+</section>
+
+<section id="history" class="page">
+<h2>ประวัติการตรวจสอบ</h2>
+<div class="card">
+<input id="search" placeholder="ค้นหารหัสเสาไฟฟ้า" oninput="showHistory()">
+<div id="historyList">กำลังโหลดประวัติ</div>
+</div>
+<div class="card">
+<h3>ประวัติส่วนรวม</h3>
+<p class="note">การดูประวัติจากโทรศัพท์เครื่องอื่นต้องเชื่อมต่อเซิร์ฟเวอร์และฐานข้อมูลส่วนกลางก่อน เวอร์ชันนี้แสดงเฉพาะข้อมูลในเครื่อง</p>
+</div>
+</section>
+
+<section id="settings" class="page">
+<h2>ตั้งค่า</h2>
+<div class="card">
+<h3>สถานะระบบ</h3>
+<p id="dbStatus">กำลังตรวจสอบ</p>
+<p>AI: ระบบจำลอง</p>
+<p>GPS: ขอพิกัดจากอุปกรณ์หรือกรอกเอง</p>
+</div>
+<div class="card">
+<h3>สำรองประวัติ</h3>
+<button class="btn" onclick="exportData()">📤 ส่งออกไฟล์ JSON</button>
+<button class="btn red" onclick="clearAll()">🗑️ ลบประวัติทั้งหมด</button>
+</div>
+</section>
+</main>
+
+<nav>
+<button data-page="home" class="active" onclick="go('home')"><span>🏠</span>หน้าหลัก</button>
+<button data-page="scan" onclick="go('scan')"><span>📷</span>ตรวจสอบ</button>
+<button data-page="mapPage" onclick="go('mapPage')"><span>🗺️</span>แผนที่</button>
+<button data-page="history" onclick="go('history')"><span>🕒</span>ประวัติ</button>
+<button data-page="settings" onclick="go('settings')"><span>⚙️</span>ตั้งค่า</button>
+</nav>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+"use strict";
+
+const DBNAME="InsulatorAIDatabaseV3";
+const STORE="inspections";
+const FALLBACK="INSULATOR_AI_V3_FALLBACK";
+
+let db=null;
+let storageMode="none";
+let records=[];
+let originalImage=null;
+let result=null;
+let gps=null;
+let map=null;
+let markers=[];
+let demoStep=0;
+let gpsRequest=0;
+
+const $=id=>document.getElementById(id);
+
+function escapeHTML(value){
+ return String(value??"").replace(/[&<>"']/g,c=>({
+  "&":"&amp;","<":"&lt;",">":"&gt;",
+  '"':"&quot;","'":"&#39;"
+ })[c]);
+}
+
+function message(id,text,kind="info"){
+ $(id).className="msg "+kind;
+ $(id).textContent=text;
+}
+
+function getFallback(){
+ try{
+  const data=JSON.parse(localStorage.getItem(FALLBACK)||"[]");
+  return Array.isArray(data)?data:[];
+ }catch(e){
+  return [];
+ }
+}
+
+function openDatabase(){
+ return new Promise((resolve,reject)=>{
+  if(!window.indexedDB){
+   reject(new Error("ไม่มี IndexedDB"));
+   return;
+  }
+  const request=indexedDB.open(DBNAME,1);
+
+  request.onupgradeneeded=()=>{
+   const database=request.result;
+   if(!database.objectStoreNames.contains(STORE)){
+    database.createObjectStore(STORE,{keyPath:"id"});
+   }
+  };
+  request.onsuccess=()=>resolve(request.result);
+  request.onerror=()=>reject(request.error);
+  request.onblocked=()=>reject(new Error("ฐานข้อมูลถูกล็อก"));
+ });
+}
+
+function idbGetAll(){
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,"readonly");
+  const req=tx.objectStore(STORE).getAll();
+  req.onsuccess=()=>resolve(req.result||[]);
+  req.onerror=()=>reject(req.error);
+ });
+}
+
+function idbPut(record){
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,"readwrite");
+  tx.objectStore(STORE).put(record);
+  tx.oncomplete=()=>resolve();
+  tx.onerror=()=>reject(tx.error);
+  tx.onabort=()=>reject(tx.error);
+ });
+}
+
+function idbDelete(id){
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,"readwrite");
+  tx.objectStore(STORE).delete(id);
+  tx.oncomplete=()=>resolve();
+  tx.onerror=()=>reject(tx.error);
+  tx.onabort=()=>reject(tx.error);
+ });
+}
+
+function idbClear(){
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,"readwrite");
+  tx.objectStore(STORE).clear();
+  tx.oncomplete=()=>resolve();
+  tx.onerror=()=>reject(tx.error);
+  tx.onabort=()=>reject(tx.error);
+ });
+}
+
+async function initStorage(){
+ try{
+  db=await openDatabase();
+  records=await idbGetAll();
+  storageMode="indexeddb";
+ }catch(error){
+  db=null;
+  try{
+   const test="__insulator_storage_test";
+   localStorage.setItem(test,"ok");
+   localStorage.removeItem(test);
+   storageMode="localstorage";
+   records=getFallback();
+  }catch(e){
+   storageMode="none";
+   records=[];
+  }
+ }
+ records.sort((a,b)=>new Date(b.date)-new Date(a.date));
+ updateCount();
+}
+
+async function writeRecord(record){
+ if(storageMode==="indexeddb"){
+  await idbPut(record);
+  const check=await idbGetAll();
+  if(!check.some(r=>r.id===record.id)){
+   throw new Error("ไม่พบรายการหลังบันทึก");
+  }
+  records=check;
+ }else if(storageMode==="localstorage"){
+  const next=[record,...records];
+  localStorage.setItem(FALLBACK,JSON.stringify(next));
+  const check=getFallback();
+  if(!check.some(r=>r.id===record.id)){
+   throw new Error("ไม่พบรายการหลังบันทึก");
+  }
+  records=check;
+ }else{
+  throw new Error("HTML Editor ไม่อนุญาตให้จัดเก็บข้อมูล");
+ }
+ records.sort((a,b)=>new Date(b.date)-new Date(a.date));
+ updateCount();
+}
+
+function updateCount(){
+ $("count").textContent=records.length;
+ const names={
+  indexeddb:"IndexedDB — จัดเก็บภาพและประวัติ",
+  localstorage:"localStorage — พื้นที่จำกัด",
+  none:"ไม่สามารถจัดเก็บข้อมูลในเว็บนี้ได้"
+ };
+ const name=names[storageMode];
+ $("storageName").textContent=name;
+ $("dbStatus").textContent=name;
+}
+
+function go(id){
+ document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+ $(id).classList.add("active");
+ document.querySelectorAll("nav button").forEach(b=>{
+  b.classList.toggle("active",b.dataset.page===id);
+ });
+ window.scrollTo(0,0);
+ if(id==="history")showHistory();
+ if(id==="mapPage")setTimeout(loadMap,200);
+ updateCount();
+}
+
+function loadPhoto(file){
+ if(!file)return;
+ if(!file.type.startsWith("image/")){
+  alert("กรุณาเลือกรูปภาพ");
+  return;
+ }
+ const reader=new FileReader();
+ reader.onerror=()=>alert("อ่านรูปภาพไม่สำเร็จ");
+ reader.onload=()=>{
+  const img=new Image();
+  img.onerror=()=>alert("เปิดรูปภาพไม่สำเร็จ");
+  img.onload=()=>{
+   const canvas=$("canvas");
+   const scale=Math.min(1,720/Math.max(img.width,img.height));
+   canvas.width=Math.round(img.width*scale);
+   canvas.height=Math.round(img.height*scale);
+   canvas.getContext("2d").drawImage(img,0,0,canvas.width,canvas.height);
+   originalImage=canvas.toDataURL("image/jpeg",0.65);
+   canvas.style.display="block";
+   $("photoStatus").textContent="เลือกภาพแล้ว: "+file.name;
+   result=null;
+   $("result").style.display="none";
+  };
+  img.src=reader.result;
+ };
+ reader.readAsDataURL(file);
+}
+
+$("cameraInput").onchange=e=>loadPhoto(e.target.files[0]);
+$("galleryInput").onchange=e=>loadPhoto(e.target.files[0]);
+
+function isValidCoordinate(lat,lng){
+ return Number.isFinite(lat)&&Number.isFinite(lng)&&
+  lat>=-90&&lat<=90&&lng>=-180&&lng<=180;
+}
+
+function setCoordinates(lat,lng,source,accuracy=null){
+ gps={lat,lng,source,accuracy};
+ $("lat").value=lat.toFixed(7);
+ $("lng").value=lng.toFixed(7);
+ message(
+  "gpsStatus",
+  "✅ บันทึกพิกัดสำเร็จ ("+(source==="device"?"GPS อุปกรณ์":"กรอกด้วยตนเอง")+")\n"+
+  "ละติจูด: "+lat.toFixed(7)+"\n"+
+  "ลองจิจูด: "+lng.toFixed(7)+
+  (accuracy!==null?"\nความแม่นยำที่ระบบแจ้ง: "+Math.round(accuracy)+" เมตร":""),
+  "good"
+ );
+}
+
+function getLocation(highAccuracy){
+ gpsRequest++;
+ const requestNumber=gpsRequest;
+ gps=null;
+
+ if(!navigator.geolocation){
+  message("gpsStatus","อุปกรณ์หรือ HTML Editor ไม่รองรับการหาตำแหน่ง","bad");
+  return;
+ }
+ if(!window.isSecureContext){
+  message("gpsStatus","เว็บนี้ไม่ได้เปิดใน Secure Context จึงอาจใช้ GPS ไม่ได้ กรุณาใช้เว็บ HTTPS หรือกรอกพิกัดเอง","warn");
+  return;
+ }
+
+ message("gpsStatus","⏳ กำลังค้นหาพิกัด โปรดอนุญาตการเข้าถึงตำแหน่ง...");
+
+ navigator.geolocation.getCurrentPosition(
+  p=>{
+   if(requestNumber!==gpsRequest)return;
+   setCoordinates(
+    p.coords.latitude,
+    p.coords.longitude,
+    "device",
+    p.coords.accuracy
+   );
+  },
+  error=>{
+   if(requestNumber!==gpsRequest)return;
+   let text="ไม่สามารถดึง GPS ได้: "+error.message;
+   if(error.code===1)text+="\nตรวจสอบการอนุญาตตำแหน่ง";
+   if(error.code===3)text+="\nลองปุ่ม GPS แบบประหยัดพลังงาน หรือกรอกพิกัดเอง";
+   message("gpsStatus",text,"warn");
+  },
+  {
+   enableHighAccuracy:highAccuracy,
+   timeout:45000,
+   maximumAge:highAccuracy?0:60000
+  }
+ );
+}
+
+function getGPS(){getLocation(true)}
+function retryGPS(){getLocation(false)}
+
+function useManualGPS(){
+ const latText=$("lat").value.trim();
+ const lngText=$("lng").value.trim();
+ if(!latText||!lngText){
+  alert("กรุณากรอกทั้งละติจูดและลองจิจูด");
+  return;
+ }
+ const lat=Number(latText);
+ const lng=Number(lngText);
+ if(!isValidCoordinate(lat,lng)){
+  alert("พิกัดไม่ถูกต้อง");
+  return;
+ }
+ gpsRequest++;
+ setCoordinates(lat,lng,"manual");
+}
+
+function clearGPS(){
+ gpsRequest++;
+ gps=null;
+ $("lat").value="";
+ $("lng").value="";
+ message("gpsStatus","ยังไม่ได้บันทึกพิกัด");
+}
+
+const demoCases=[
+ {damage:0,dirt:0,percent:0,crack:false},
+ {damage:1,dirt:1,percent:5.4,crack:true},
+ {damage:2,dirt:2,percent:18.7,crack:true},
+ {damage:3,dirt:1,percent:39.2,crack:true},
+ {damage:4,dirt:3,percent:65.8,crack:true},
+ {damage:5,dirt:3,percent:84.1,crack:true}
+];
+
+function analyze(){
+ if(!originalImage){
+  alert("กรุณาถ่ายภาพหรือเลือกภาพก่อน");
+  return;
+ }
+ demoStep++;
+ const d=demoCases[(demoStep-1)%demoCases.length];
+ result={...d,demo:true};
+
+ const img=new Image();
+ img.onload=()=>{
+  const canvas=$("canvas");
+  const ctx=canvas.getContext("2d");
+  const w=canvas.width,h=canvas.height;
+
+  ctx.clearRect(0,0,w,h);
+  ctx.drawImage(img,0,0,w,h);
+  ctx.lineWidth=Math.max(2,w/180);
+  ctx.font="bold "+Math.max(13,Math.round(w/32))+"px Arial";
+
+  function box(x,y,bw,bh,color,text){
+   ctx.strokeStyle=color;
+   ctx.strokeRect(x*w,y*h,bw*w,bh*h);
+   const labelWidth=ctx.measureText(text).width+10;
+   const top=Math.max(0,y*h-24);
+   ctx.fillStyle=color;
+   ctx.fillRect(x*w,top,labelWidth,24);
+   ctx.fillStyle="#ffffff";
+   ctx.fillText(text,x*w+5,top+18);
+  }
+
+  box(.18,.15,.64,.68,"#16a34a","insulator DEMO");
+  if(d.crack)box(.45,.39,.19,.15,"#ef4444","crack DEMO");
+  if(d.dirt>0)box(.29,.59,.23,.14,"#eab308","dirt DEMO");
+
+  ctx.fillStyle="rgba(0,0,0,.75)";
+  ctx.fillRect(0,h-27,w,27);
+  ctx.fillStyle="white";
+  ctx.font="bold 13px Arial";
+  ctx.fillText("SIMULATED AI - NOT REAL DETECTION",6,h-9);
+
+  $("resultDetails").innerHTML=`
+   <p><b>ผลวิเคราะห์ YOLOv8 (จำลอง)</b></p>
+   <p>ลูกถ้วย: insulator DEMO</p>
+   <p>รอยแตก: ${d.crack?"พบ (จำลอง)":"ไม่พบ (จำลอง)"}</p>
+   <p>ความเสียหาย: ${d.damage}/5</p>
+   <p>ความสกปรก: ${d.dirt}/3</p>
+   <p>พื้นที่เสียหาย: ${d.percent}% (จำลอง)</p>
+  `;
+  $("result").style.display="block";
+  $("saveStatus").innerHTML="";
+ };
+ img.src=originalImage;
+}
+
+async function saveResult(){
+ if(!result||!originalImage){
+  alert("กรุณาวิเคราะห์ภาพก่อน");
+  return;
+ }
+
+ const pole=$("pole").value.trim();
+ const inspector=$("inspector").value.trim();
+
+ if(!pole||!inspector){
+  alert("กรุณากรอกรหัสเสาและชื่อผู้ตรวจสอบ");
+  return;
+ }
+
+ if($("lat").value.trim()||$("lng").value.trim()){
+  const lat=Number($("lat").value);
+  const lng=Number($("lng").value);
+  if(
+   !$("lat").value.trim()||
+   !$("lng").value.trim()||
+   !isValidCoordinate(lat,lng)
+  ){
+   alert("กรุณาตรวจสอบพิกัดทั้งสองช่อง");
+   return;
+  }
+  if(!gps || gps.lat!==lat || gps.lng!==lng){
+   gpsRequest++;
+   gps={lat,lng,source:"manual",accuracy:null};
+  }
+ }
+
+ if(!gps){
+  if(!confirm("ยังไม่มีพิกัด ต้องการบันทึกผลโดยไม่มี GPS หรือไม่?"))return;
+ }
+
+ const button=$("saveBtn");
+ button.disabled=true;
+ message("saveStatus","กำลังบันทึกและตรวจสอบข้อมูล...");
+
+ const canvas=$("canvas");
+ const record={
+  id:String(Date.now())+"-"+Math.random().toString(36).slice(2,9),
+  pole,inspector,
+  date:new Date().toISOString(),
+  damage:result.damage,
+  dirt:result.dirt,
+  percent:result.percent,
+  image:canvas.toDataURL("image/jpeg",0.45),
+  gps:gps?{...gps}:null,
+  demo:true
+ };
+
+ try{
+  await writeRecord(record);
+  message("saveStatus","✅ บันทึกและตรวจสอบข้อมูลสำเร็จ","good");
+  alert("✅ บันทึกสำเร็จแล้ว เปิดหน้าประวัติเพื่อดูข้อมูล");
+  go("history");
+ }catch(error){
+  message(
+   "saveStatus",
+   "❌ บันทึกไม่สำเร็จ: "+error.message+
+   "\nHTML Editor อาจจำกัดพื้นที่จัดเก็บภาพหรือไม่อนุญาตให้บันทึก",
+   "bad"
+  );
+ }finally{
+  button.disabled=false;
+ }
+}
+
+function dateText(value){
+ const date=new Date(value);
+ return Number.isNaN(date.getTime())?"ไม่ทราบวันที่":date.toLocaleString("th-TH");
+}
+
+function showHistory(){
+ const root=$("historyList");
+ const keyword=$("search").value.trim().toLowerCase();
+ root.innerHTML="";
+
+ const list=records.filter(r=>
+  String(r.pole).toLowerCase().includes(keyword)
+ );
+
+ if(!list.length){
+  root.textContent="ยังไม่มีประวัติ";
+  return;
+ }
+
+ list.forEach(r=>{
+  const div=document.createElement("div");
+  div.className="record";
+
+  div.innerHTML=`
+   <h3>${escapeHTML(r.pole)}</h3>
+   <p>${escapeHTML(dateText(r.date))}</p>
+   <img alt="ภาพที่ตรวจสอบ">
+   <p>ผู้ตรวจสอบ: ${escapeHTML(r.inspector)}</p>
+   <p>ความเสียหาย: ${r.damage}/5 (จำลอง)</p>
+   <p>ความสกปรก: ${r.dirt}/3 (จำลอง)</p>
+   <p>พื้นที่เสียหาย: ${r.percent}% (จำลอง)</p>
+   <p>พิกัด: ${r.gps?
+    Number(r.gps.lat).toFixed(6)+", "+Number(r.gps.lng).toFixed(6):
+    "ไม่ได้บันทึก"}</p>
+   <span class="status">AI DEMO</span>
+   <button class="btn light deleteButton">ลบรายการนี้</button>
+  `;
+
+  div.querySelector("img").src=r.image;
+  div.querySelector(".deleteButton").onclick=()=>deleteRecord(r.id);
+  root.appendChild(div);
+ });
+}
+
+async function deleteRecord(id){
+ if(!confirm("ต้องการลบรายการนี้ใช่หรือไม่?"))return;
+
+ try{
+  if(storageMode==="indexeddb"){
+   await idbDelete(id);
+   records=await idbGetAll();
+  }else if(storageMode==="localstorage"){
+   const next=records.filter(r=>r.id!==id);
+   localStorage.setItem(FALLBACK,JSON.stringify(next));
+   records=getFallback();
+  }else{
+   throw new Error("ไม่มีพื้นที่จัดเก็บ");
+  }
+  updateCount();
+  showHistory();
+ }catch(e){
+  alert("ลบไม่สำเร็จ: "+e.message);
+ }
+}
+
+function loadMap(){
+ if(typeof L==="undefined"){
+  $("map").textContent="โหลดแผนที่ไม่สำเร็จ โปรดตรวจสอบอินเทอร์เน็ต";
+  return;
+ }
+ if(!map){
+  map=L.map("map").setView([14.35,100.57],11);
+  L.tileLayer(
+   "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+   {attribution:"© OpenStreetMap contributors",maxZoom:19}
+  ).addTo(map);
+ }
+
+ markers.forEach(m=>map.removeLayer(m));
+ markers=[];
+
+ const points=records.filter(r=>
+  r.gps&&isValidCoordinate(Number(r.gps.lat),Number(r.gps.lng))
+ );
+
+ points.forEach(r=>{
+  const color=r.damage<=1?"#16a34a":
+   r.damage<=3?"#eab308":"#dc2626";
+
+  const marker=L.circleMarker(
+   [Number(r.gps.lat),Number(r.gps.lng)],
+   {
+    radius:10,color:"white",weight:3,
+    fillColor:color,fillOpacity:1
+   }
+  ).addTo(map);
+
+  marker.bindPopup(escapeHTML(r.pole)+" (AI DEMO)");
+
+  marker.on("click",()=>{
+   $("mapDetail").innerHTML=`
+    <b>${escapeHTML(r.pole)}</b>
+    <p>ผู้ตรวจสอบ: ${escapeHTML(r.inspector)}</p>
+    <p>ความเสียหาย: ${r.damage}/5 (จำลอง)</p>
+    <p>ความสกปรก: ${r.dirt}/3 (จำลอง)</p>
+    <p>พิกัด: ${Number(r.gps.lat).toFixed(6)}, ${Number(r.gps.lng).toFixed(6)}</p>
+    <p>แหล่งที่มาของพิกัด: ${r.gps.source==="device"?"GPS อุปกรณ์":"กรอกด้วยตนเอง"}</p>
+   `;
+  });
+
+  markers.push(marker);
+ });
+
+ if(points.length){
+  map.fitBounds(
+   L.latLngBounds(points.map(r=>
+    [Number(r.gps.lat),Number(r.gps.lng)]
+   )).pad(.25),
+   {maxZoom:15}
+  );
+ }
+
+ setTimeout(()=>map.invalidateSize(),250);
+}
+
+function exportData(){
+ if(!records.length){
+  alert("ยังไม่มีข้อมูลสำหรับสำรอง");
+  return;
+ }
+
+ const blob=new Blob(
+  [JSON.stringify(records,null,2)],
+  {type:"application/json"}
+ );
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement("a");
+ a.href=url;
+ a.download="InsulatorAI_Backup.json";
+ document.body.appendChild(a);
+ a.click();
+ a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+async function clearAll(){
+ if(!confirm("ลบประวัติทั้งหมดในเครื่องใช่หรือไม่?"))return;
+ try{
+  if(storageMode==="indexeddb"){
+   await idbClear();
+   records=await idbGetAll();
+  }else if(storageMode==="localstorage"){
+   localStorage.removeItem(FALLBACK);
+   records=getFallback();
+  }else{
+   throw new Error("ไม่มีระบบจัดเก็บ");
+  }
+  updateCount();
+  alert("ลบประวัติแล้ว");
+ }catch(e){
+  alert("ลบข้อมูลไม่สำเร็จ: "+e.message);
+ }
+}
+
+initStorage();
+</script>
+</body>
+</html>
